@@ -265,32 +265,52 @@ function charger(){
   } else { DONNEES=depuisLocal().map(normaliser); src.textContent="Source : enregistrements de cet appareil."; afficher(); }
 }
 function echap(s){ return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+/* Regroupe par invité (code) : on garde la réponse la plus récente,
+   et on compte le nombre d'envois pour info. */
+function uniques(list){
+  var map={};
+  list.forEach(function(x){
+    var key=(x.code||x.affichage||"?").toUpperCase();
+    var t=x.date?Date.parse(x.date):0; if(isNaN(t)) t=0;
+    if(!map[key]){ var c={}; for(var k in x){ c[k]=x[k]; } c._t=t; c._n=1; map[key]=c; }
+    else {
+      map[key]._n++;
+      if(t>=map[key]._t){ for(var k2 in x){ map[key][k2]=x[k2]; } map[key]._t=t; }
+    }
+  });
+  var arr=[]; for(var k in map){ arr.push(map[k]); }
+  arr.sort(function(a,b){ return (b._t||0)-(a._t||0); });
+  return arr;
+}
 function afficher(){
-  var present=DONNEES.filter(function(x){return /Présent/i.test(x.statut)||x.present==="Oui";}).length;
+  var U=uniques(DONNEES);
+  var present=U.filter(function(x){return /Présent/i.test(x.statut)||x.present==="Oui";}).length;
   document.getElementById("n-present").textContent=present;
-  document.getElementById("n-absent").textContent=DONNEES.length-present;
-  document.getElementById("n-total").textContent=DONNEES.length;
+  document.getElementById("n-absent").textContent=U.length-present;
+  document.getElementById("n-total").textContent=U.length;
   var corps=document.getElementById("corps");
-  if(DONNEES.length===0){ corps.innerHTML='<tr><td colspan="6" class="vide">Aucune réponse pour le moment.</td></tr>'; return; }
+  if(U.length===0){ corps.innerHTML='<tr><td colspan="6" class="vide">Aucune réponse pour le moment.</td></tr>'; return; }
   corps.innerHTML="";
-  DONNEES.forEach(function(x){
+  U.forEach(function(x){
     var ok=/Présent/i.test(x.statut)||x.present==="Oui";
     var d=x.date?new Date(x.date):null;
     var dateAff=d&&!isNaN(d)?d.toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"—";
+    var envois=(x._n>1)?' <span style="color:var(--or);font-size:.74rem">('+x._n+" envois)</span>":"";
     var tr=document.createElement("tr");
     tr.innerHTML='<td class="nom-c">'+echap(x.affichage)+'</td><td>'+echap(x.type||"—")+'</td>'+
       '<td class="code-c">'+echap(x.code||"—")+'</td>'+
       '<td><span class="badge '+(ok?"ok":"no")+'">'+(ok?"Présent(e)":"Excusé(e)")+'</span></td>'+
       '<td class="msg-c">'+(x.message?echap(x.message):'<span style="opacity:.4">—</span>')+'</td>'+
-      '<td class="date-c">'+dateAff+'</td>';
+      '<td class="date-c">'+dateAff+envois+'</td>';
     corps.appendChild(tr);
   });
 }
 document.getElementById("rafraichir").addEventListener("click", charger);
 document.getElementById("exporter").addEventListener("click", function(){
-  if(!DONNEES.length) return;
-  var l=[["Invite","Type","Code","Statut","Message","Date"]];
-  DONNEES.forEach(function(x){ l.push([x.affichage,x.type,x.code,(/Présent/i.test(x.statut)||x.present==="Oui")?"Present":"Excuse",x.message,x.date]); });
+  var U=uniques(DONNEES);
+  if(!U.length) return;
+  var l=[["Invite","Type","Code","Statut","Message","Date","Nb envois"]];
+  U.forEach(function(x){ l.push([x.affichage,x.type,x.code,(/Présent/i.test(x.statut)||x.present==="Oui")?"Present":"Excuse",x.message,x.date,x._n]); });
   var csv=l.map(function(r){return r.map(function(c){return '"'+String(c||"").replace(/"/g,'""')+'"';}).join(",");}).join("\n");
   var a=document.createElement("a"); a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));
   a.download="confirmations-reine-christian.csv"; a.click();
