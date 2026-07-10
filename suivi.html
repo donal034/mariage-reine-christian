@@ -100,6 +100,12 @@ th{font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ch
 .message-pret .txt{margin-top:10px;padding:12px;background:#fff;border:1px solid var(--sable);border-radius:8px;white-space:pre-wrap;font-size:.86rem;color:var(--chocolat)}
 .statut{font-size:.85rem;color:var(--chocolat-doux);text-align:center;min-height:18px;margin-top:8px}
 td .c{font-weight:500;color:var(--terracotta);letter-spacing:.02em;word-break:break-all;font-size:.8rem}
+.table-cell{display:flex;align-items:center;gap:6px}
+.table-cell input{width:54px;padding:7px 8px;border:1px solid var(--sable);border-radius:8px;font-family:'Jost',sans-serif;font-size:.86rem;color:var(--chocolat);background:var(--ivoire);text-align:center}
+.table-cell input:focus{outline:none;border-color:var(--terracotta)}
+.table-save{border:none;background:var(--terracotta);color:#fff;border-radius:8px;padding:6px 10px;font-size:.72rem;letter-spacing:.06em;cursor:pointer;white-space:nowrap;transition:background .2s}
+.table-save:hover{background:var(--chocolat)}
+.table-save.saved{background:var(--vert)}
 </style>
 </head>
 <body>
@@ -133,9 +139,9 @@ td .c{font-weight:500;color:var(--terracotta);letter-spacing:.02em;word-break:br
   <div class="vue actif zone" id="vue-suivi">
     <div class="panneau">
       <div class="stats">
-        <div class="stat present"><div class="n" id="n-present">0</div><div class="l">Présents</div></div>
-        <div class="stat absent"><div class="n" id="n-absent">0</div><div class="l">Excusés</div></div>
-        <div class="stat total"><div class="n" id="n-total">0</div><div class="l">Réponses</div></div>
+        <div class="stat present"><div class="n" id="n-present">0</div><div class="l">Présents (pers.)</div></div>
+        <div class="stat absent"><div class="n" id="n-absent">0</div><div class="l">Excusés (pers.)</div></div>
+        <div class="stat total"><div class="n" id="n-total">0</div><div class="l">Total (pers.)</div></div>
       </div>
       <div class="barre">
         <button class="bouton sec" id="rafraichir">Rafraîchir</button>
@@ -146,11 +152,11 @@ td .c{font-weight:500;color:var(--terracotta);letter-spacing:.02em;word-break:br
     <div class="panneau">
       <div class="tab-wrap">
         <table>
-          <thead><tr><th>Invité</th><th>Type</th><th>Code</th><th>Statut</th><th>Message</th><th>Reçu le</th></tr></thead>
-          <tbody id="corps"><tr><td colspan="6" class="vide">Chargement…</td></tr></tbody>
+          <thead><tr><th>Invité</th><th>Type</th><th>Code</th><th>Statut</th><th>Table</th><th>Message</th><th>Reçu le</th></tr></thead>
+          <tbody id="corps"><tr><td colspan="7" class="vide">Chargement…</td></tr></tbody>
         </table>
       </div>
-      <p class="note"><strong>Astuce :</strong> avec le suivi partagé (Google Apps Script) configuré, cette page montre les réponses de tous les invités. Sinon, elle montre celles enregistrées sur cet appareil. Pensez à exporter le CSV régulièrement.</p>
+      <p class="note"><strong>Astuce :</strong> avec le suivi partagé (Google Apps Script) configuré, cette page montre les réponses de tous les invités. Sinon, elle montre celles enregistrées sur cet appareil. Saisissez un numéro de table puis cliquez sur « Enregistrer » : le billet déjà remis à l'invité (QR fixe) affichera ce numéro dès qu'il sera rescanné sur la page de vérification — pas besoin de réimprimer le billet. Pensez à exporter le CSV régulièrement.</p>
     </div>
   </div>
 
@@ -248,7 +254,7 @@ function normaliser(x){
     affichage:x.affichage||x.nom||"—", type:x.type||"", code:x.code||"",
     statut:x.statut||(x.present==="Oui"?"Présent(e)":(x.present==="Non"?"Absent(e)":"")),
     present:x.present||(/Présent/i.test(x.statut||"")?"Oui":"Non"),
-    message:x.message||"", date:x.date||""
+    message:x.message||"", date:x.date||"", table:x.table||""
   };
 }
 function charger(){
@@ -282,35 +288,70 @@ function uniques(list){
   arr.sort(function(a,b){ return (b._t||0)-(a._t||0); });
   return arr;
 }
+function poidsPersonnes(x){
+  /* Un couple compte pour 2 personnes dans les décomptes de présence */
+  return /couple/i.test(x.type||"") ? 2 : 1;
+}
 function afficher(){
   var U=uniques(DONNEES);
-  var present=U.filter(function(x){return /Présent/i.test(x.statut)||x.present==="Oui";}).length;
+  var present=0, absent=0;
+  U.forEach(function(x){
+    var ok=/Présent/i.test(x.statut)||x.present==="Oui";
+    var poids=poidsPersonnes(x);
+    if(ok){ present+=poids; } else { absent+=poids; }
+  });
   document.getElementById("n-present").textContent=present;
-  document.getElementById("n-absent").textContent=U.length-present;
-  document.getElementById("n-total").textContent=U.length;
+  document.getElementById("n-absent").textContent=absent;
+  document.getElementById("n-total").textContent=present+absent;
   var corps=document.getElementById("corps");
-  if(U.length===0){ corps.innerHTML='<tr><td colspan="6" class="vide">Aucune réponse pour le moment.</td></tr>'; return; }
+  if(U.length===0){ corps.innerHTML='<tr><td colspan="7" class="vide">Aucune réponse pour le moment.</td></tr>'; return; }
   corps.innerHTML="";
   U.forEach(function(x){
     var ok=/Présent/i.test(x.statut)||x.present==="Oui";
     var d=x.date?new Date(x.date):null;
     var dateAff=d&&!isNaN(d)?d.toLocaleString("fr-FR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"}):"—";
     var envois=(x._n>1)?' <span style="color:var(--or);font-size:.74rem">('+x._n+" envois)</span>":"";
+    var codeAttr=echap((x.code||"").toUpperCase());
+    var typeAff=echap(x.type||"—")+(poidsPersonnes(x)===2?' <span style="color:var(--or);font-size:.74rem">(2 pers.)</span>':"");
     var tr=document.createElement("tr");
-    tr.innerHTML='<td class="nom-c">'+echap(x.affichage)+'</td><td>'+echap(x.type||"—")+'</td>'+
+    tr.innerHTML='<td class="nom-c">'+echap(x.affichage)+'</td><td>'+typeAff+'</td>'+
       '<td class="code-c">'+echap(x.code||"—")+'</td>'+
       '<td><span class="badge '+(ok?"ok":"no")+'">'+(ok?"Présent(e)":"Excusé(e)")+'</span></td>'+
+      '<td><div class="table-cell">'+
+        '<input type="text" maxlength="6" value="'+echap(x.table||"")+'" data-code="'+codeAttr+'" placeholder="—">'+
+        '<button type="button" class="table-save" data-code="'+codeAttr+'">Enregistrer</button>'+
+      '</div></td>'+
       '<td class="msg-c">'+(x.message?echap(x.message):'<span style="opacity:.4">—</span>')+'</td>'+
       '<td class="date-c">'+dateAff+envois+'</td>';
     corps.appendChild(tr);
   });
+  Array.prototype.forEach.call(corps.querySelectorAll(".table-save"), function(btn){
+    btn.addEventListener("click", function(){ enregistrerTable(btn); });
+  });
+}
+
+/* Envoie le numéro de table saisi pour un code donné vers le suivi partagé,
+   afin que le billet (QR) et la page de vérification l'affichent aussitôt. */
+function enregistrerTable(btn){
+  var code=btn.getAttribute("data-code");
+  var input=document.querySelector('.table-cell input[data-code="'+code+'"]');
+  var valeur=input.value.trim();
+  if(!URL_SUIVI){ btn.textContent="Suivi partagé non configuré"; return; }
+  btn.disabled=true; btn.textContent="Enregistrement…";
+  fetch(URL_SUIVI, {method:"POST", mode:"no-cors", headers:{"Content-Type":"text/plain;charset=utf-8"},
+    body:JSON.stringify({kind:"table", code:code, table:valeur})})
+    .then(function(){
+      btn.disabled=false; btn.textContent="Enregistré ✔"; btn.classList.add("saved");
+      setTimeout(function(){ btn.textContent="Enregistrer"; btn.classList.remove("saved"); }, 2200);
+    })
+    .catch(function(){ btn.disabled=false; btn.textContent="Erreur, réessayer"; });
 }
 document.getElementById("rafraichir").addEventListener("click", charger);
 document.getElementById("exporter").addEventListener("click", function(){
   var U=uniques(DONNEES);
   if(!U.length) return;
-  var l=[["Invite","Type","Code","Statut","Message","Date","Nb envois"]];
-  U.forEach(function(x){ l.push([x.affichage,x.type,x.code,(/Présent/i.test(x.statut)||x.present==="Oui")?"Present":"Excuse",x.message,x.date,x._n]); });
+  var l=[["Invite","Type","Code","Statut","Table","Message","Date","Nb envois"]];
+  U.forEach(function(x){ l.push([x.affichage,x.type,x.code,(/Présent/i.test(x.statut)||x.present==="Oui")?"Present":"Excuse",x.table||"",x.message,x.date,x._n]); });
   var csv=l.map(function(r){return r.map(function(c){return '"'+String(c||"").replace(/"/g,'""')+'"';}).join(",");}).join("\n");
   var a=document.createElement("a"); a.href=URL.createObjectURL(new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"}));
   a.download="confirmations-reine-christian.csv"; a.click();
@@ -343,7 +384,7 @@ function gMessage(nom,code){
   return "Bonjour "+nom+",\n\n"+
     "Reine & Christian ont la joie de vous convier à leur mariage les 24 & 30 octobre 2026.\n\n"+
     "Votre code d'invitation personnel est : "+code+"\n\n"+
-    "Rendez-vous sur "+LIEN_SITE+" , saisissez simplement ce code pour confirmer votre présence et télécharger votre billet d'entrée.\n\n"+
+    "Rendez-vous sur "+LIEN_SITE+" puis faites défiler la page jusqu'en bas, jusqu'au cadre \"RSVP\" : collez-y simplement ce code pour confirmer votre présence et télécharger votre billet d'entrée.\n\n"+
     "Ce code est strictement personnel, merci de ne pas le partager.\n\nÀ très bientôt !";
 }
 document.getElementById("g-generer").addEventListener("click",function(){
